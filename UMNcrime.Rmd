@@ -1,0 +1,202 @@
+---
+title: "Crime Frequency Around UMN Campus"
+author: "Branda Leung"
+date: "2024-05-15"
+z
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+University of Minnesota (UMN) students get many notifications called SAFE-U Alerts which are rapid notifications that are sent out when there are emergency situations. Many of which are located on campus or in Dinkytown. This analysis expands the location and looks at neighborhoods near the UMN campus. This aims to study the seasonal patterns of crime in the neighborhoods surrounding UMN, measure crime frequency between each neighborhood, and visualizes the crime rates.
+
+
+## Seasonal Crime Patterns and Measuring Crime Frequency
+
+Note:
+The crime data I gathered is from the open-data website of Minneapolis <https://opendata.minneapolismn.gov/datasets/cityoflakes::crime-data/about> which is a public source.
+
+To see seasonality in crime rates and measure the crime frequency between each neighborhood, we can use a line chart.
+
+From our dataset, the neighborhoods closest to UMN are Cedar Riverside, Como, Marcy Holmes, Nicollet Island - East, and Prospect Park - East River Road.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+Crime <- read.csv("C:/Users/brand/Downloads/Crime_Data.csv")
+
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+
+## filtering for 2019-2023 (2018 & below aren't complete)
+crime <- Crime %>% filter(Year >= 2019 & Year <= 2023)
+
+## Question: How can we visualize the crimes around UMN campus/UMN neighborhood?
+
+## Filtering for neighborhoods near UMN campus
+umn.crime <- crime %>% filter(Neighborhood == "Prospect Park - East River Road" 
+                              | Neighborhood == "Como"
+                              | Neighborhood == "Marcy Holmes"
+                              | Neighborhood == "Cedar Riverside"
+                              | Neighborhood == "Nicollet Island - East Bank")
+
+df <- data.frame(incident_umn = rep(1, 19334))
+umn.crime <- cbind(umn.crime, df)
+
+# Create a table for neighborhoods and their coordinates
+coordinates <- data.frame(
+  Neighborhood = c("Prospect Park - East River Road", "Como", "Marcy Holmes", "Cedar Riverside", "Nicollet Island - East Bank"),
+  Latitude = c(44.968410, 44.985580, 44.985090, 44.967530, 44.986520), 
+  Longitude = c(-93.216860, -93.220420, -93.245090, -93.239750, -93.258910)
+)
+
+attach(umn.crime)
+
+# Perform the join and update coordinates
+umn.crime.clean <- umn.crime %>%
+  left_join(coordinates, by = "Neighborhood") %>%
+  mutate(Latitude = ifelse(Latitude == 0, Latitude.y, Latitude),
+    Longitude = ifelse(Longitude == 0, Longitude.y, Longitude),
+  ) %>%
+  select(-Latitude.y, -Longitude.y)  # Remove the temporary columns
+
+# Create a Date column
+umn.crime.clean <- umn.crime.clean %>%
+  mutate(Date = make_date(Year, Month, Day))
+
+# Aggregate data to count crimes per month
+umn.crime.aggregate <- umn.crime.clean %>%
+  mutate(YearMonth = floor_date(Date, "month")) %>%
+  group_by(YearMonth, Neighborhood) %>%
+  
+  summarise(incident_umn = n()) %>%
+  ungroup() %>%
+  mutate(Year = year(YearMonth))
+
+ggplot() +
+  geom_point(data = filter(umn.crime.aggregate, Neighborhood == "Como"), aes(x = YearMonth, y = incident_umn, color = "Como"), shape = 16, size = 0.1) +
+  geom_line(data = filter(umn.crime.aggregate, Neighborhood == "Como"), aes(x = YearMonth, y = incident_umn, color = "Como"), size = 1) +
+  
+  geom_point(data = filter(umn.crime.aggregate, Neighborhood == "Marcy Holmes"), aes(x = YearMonth, y = incident_umn, color = "Marcy Holmes"), shape = 16, size = 0.1) +
+  geom_line(data = filter(umn.crime.aggregate, Neighborhood == "Marcy Holmes"), aes(x = YearMonth, y = incident_umn, color = "Marcy Holmes"), size = 1) +
+  
+  geom_point(data = filter(umn.crime.aggregate, Neighborhood == "Cedar Riverside"), aes(x = YearMonth, y = incident_umn, color = "Cedar Riverside"), shape = 16, size = 0.1) +
+  geom_line(data = filter(umn.crime.aggregate, Neighborhood == "Cedar Riverside"), aes(x = YearMonth, y = incident_umn, color = "Cedar Riverside"), size = 1) +
+  
+  geom_point(data = filter(umn.crime.aggregate, Neighborhood == "Nicollet Island - East Bank"), aes(x = YearMonth, y = incident_umn, color = "Nicollet Island - East Bank"), shape = 16, size = 0.1) +
+  geom_line(data = filter(umn.crime.aggregate, Neighborhood == "Nicollet Island - East Bank"), aes(x = YearMonth, y = incident_umn, color = "Nicollet Island - East Bank"), size = 1) +
+  
+  geom_point(data = filter(umn.crime.aggregate, Neighborhood == "Prospect Park - East River Road"), aes(x = YearMonth, y = incident_umn, color = "Prospect Park - East River Road"), shape = 16, size = 0.1) +
+  geom_line(data = filter(umn.crime.aggregate, Neighborhood == "Prospect Park - East River Road"), aes(x = YearMonth, y = incident_umn, color = "Prospect Park - East River Road"), size = 1) +
+  scale_color_viridis_d() +
+  labs(title = "Number of Crimes from 2019 to 2023",
+       x = "Years",
+       y = "Number of Crimes", color = "Neighborhoods") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 20, face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold"),
+    axis.text = element_text(face = "bold")
+  )
+```
+
+Overall, Marcy Holmes has the highest crime rate out of all the other neighborhoods while Nicollet Island - East Bank has the lowest.
+
+Additionally, we can see that there are alignments of high peaks happening between each neighborhood, so let's focus on a specific neighborhood to determine this pattern.
+
+Let's focus on Marcy Holmes' trend line.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Convert Year to factor for discrete legend
+marcy.holmes.aggregate <- umn.crime.aggregate
+marcy.holmes.aggregate$Year <- as.factor(umn.crime.aggregate$Year)
+marcy.holmes.aggregate <- marcy.holmes.aggregate %>% 
+  filter(marcy.holmes.aggregate$Neighborhood == "Marcy Holmes")
+
+
+
+# Create line plot using ggplot2
+ggplot(marcy.holmes.aggregate, aes(x = YearMonth, y = incident_umn, color = Year)) +
+  geom_point(shape = 16, size = 5) + 
+  geom_line(color = "black", size = 0.5) +
+  labs(title = "Marcy Holmes Crime Count 2019 - 2023",
+       x = "Years",
+       y = "Crime Count") +
+  scale_color_viridis_d() +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold"),
+    axis.title.x = element_text(face = "bold"),
+    axis.title.y = element_text(face = "bold"),
+    axis.text = element_text(face = "bold")
+  )
+```
+
+(Note: Each point represents the crime counts for each month starting with January)
+
+For each year, we can see a similar pattern of a huge peak occurring during the summertime months (June, July, August) while dropping off near the winter months (Dec, Jan, Feb). This aligns with the seasonal patterns in crime rates. According to a report by the Bureau of Justice Statistics, less serious crimes such as larceny/theft had the most consistent seasonal pattern.
+
+**(Note: This dataset includes crimes ranging from larceny/theft, destruction/damage/vandalism of property, and embezzlement to homicide offenses, assault offenses, and robbery, etc...)**
+
+
+## Visualizing Crime Frequency of 2023
+
+Now let's take a screenshot of just 2023 UMN campus neighborhood crimes using a heat map. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+## Importing packages
+
+library(leaflet)
+library(leaflet.extras)
+library(magrittr)
+
+## Looking at 2023 crime
+crime_2023 <- umn.crime.clean %>% filter(Year == 2023)
+
+attach(crime_2023)
+
+
+## Creating heatmap for crime frequency around UMN campus (2023)
+# (note: crtl + shift + m gives pipe)
+
+# Aggregate data to count crimes at each location
+crime_counts <- crime_2023 %>%
+  group_by(Longitude, Latitude) %>%
+  summarise(count = n()) %>%
+  ungroup()
+
+# Create leaflet map
+leaflet(data = crime_counts) %>%
+  
+  # Add tiles
+  addTiles() %>%
+  
+  # Center the map around UMN campus
+  setView(lng = -93.236250, lat = 44.974510, zoom = 13) %>%
+  
+  # Add heatmap
+  addHeatmap(
+    lng = ~Longitude, 
+    lat = ~Latitude, 
+    intensity = ~count,  # Use the count of crimes at each location
+    max = max(crime_counts$count),
+    radius = 20, 
+    blur = 10
+  ) %>%
+  
+  # Add legend
+  addLegend(
+    position = "bottomright", 
+    pal = colorNumeric(c("white", "blue", "green", "yellow", "red"), domain = crime_counts$count),
+    values = crime_counts$count,  # Reflecting the count of crimes
+    title = "Number of crimes", 
+    opacity = 0.7
+  )
+
+```
+
+Note: For the extreme red flare ups, it doesn't necessarily represent the exact location of the crimes. The dataset contains multiple crimes recorded with identical coordinates because the dataset contained missing coordinates so I estimated the location based on their asssigned neighborhoods.
+
+Overall, the hot spots are near Marcy Holmes, Cedar Riverside, Prospect Park, and Dinkytown.
